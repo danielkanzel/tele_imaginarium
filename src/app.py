@@ -10,6 +10,7 @@ from error_handler import error_callback
 from models import *
 
 from game_states import GameStates
+from configs.texts import RegistrationTexts, CreationTexts, CommandsList
 
 
 ## Constants
@@ -67,17 +68,10 @@ def start(update, context):
     session.close()
 
     if check_user(session, user_id) == False:
-        update.message.reply_text("""
-        Привет! Вижу ты у нас впервые!
-        Для начала попрошу тебя представиться.
-        То имя, которое ты введешь в ответном сообщении будет использоваться в игре.
-        """)
+        update.message.reply_text(RegistrationTexts.hello)
         return BEGIN
     else:
-        update.message.reply_text("""
-/create - создать новую игру,
-/join 1 - присоединиться к игре, где 1 - номер созданной игры
-        """)
+        update.message.reply_text(CommandsList.commandslist)
         return CREATE
 
         
@@ -92,10 +86,7 @@ def create_user(update, context):
     session.add(Player(id=int(user_id),name=name,points=0))
     session.commit() 
     # reply and log
-    update.message.reply_text("""
-/create - создать новую игру,
-/join 1 - присоединиться к игре, где 1 - номер созданной игры
-        """)
+    update.message.reply_text(CommandsList.commandslist)
     logging.info("User %s added" % user_id)
     # next state
     return CREATE
@@ -131,19 +122,13 @@ def create_game(update,context):
         session.add(Players2Game(game_id=game_id,player_id=user_id,position=0))
         session.commit()
         # reply and log
-        update.message.reply_text(f"""
-Игра создана, ID {str(game_id)}. 
-Отправь ID друзьям, чтобы они присоединились
-        """ )
+        update.message.reply_text(CreationTexts.connectlink.format(game_id=str(game_id)))
         logging.info(f"User {user_id} create game")
         return PREPARE
     elif last_game.Game.state == GameStates.begin:
-        update.message.reply_text(f"""
-Игра уже создана, ID {str(last_game.Game.id)}. 
-Отправь ID друзьям, чтобы они присоединились
-    """ )
+        update.message.reply_text(CreationTexts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
     elif last_game.Game.state == GameStates.in_progress:
-        update.message.reply_text("Нельзя создать игру, пока не закончена предыдущая")
+        update.message.reply_text(CreationTexts.already_in_game)
     else:
         logging.debug(f"Unknown game {last_game.Game.id} state")
     pass
@@ -153,27 +138,27 @@ def join_game(update,context):
     user_id = update.message.from_user.id
     user_data = context.user_data
     game_id = update.message.text.split(" ")[1]
+
     # create db session
     session = Session()
+
     # get existed games
     last_game = session.query(Game,Players2Game)\
         .join(Players2Game, Players2Game.game_id == Game.id)\
         .filter_by(player_id=user_id)\
         .first()
+
     # check for in_progress games
     if last_game == None or last_game.Game.state == GameStates.ended:
         session.add(Players2Game(game_id=game_id,player_id=user_id,position=0))
         session.flush()
-        update.message.reply_text(f"Вы присоединились к игре, ожидайте начала" )
+        update.message.reply_text(CreationTexts.succesfully_connected)
         logging.info(f"User {user_id} join game")
         return AWAIT
     elif last_game.Game.state == GameStates.begin:
-        update.message.reply_text(f"""
-Игра уже создана, ID {str(last_game.Game.id)}. 
-Отправь ID друзьям, чтобы они присоединились
-    """ )
+        update.message.reply_text(CreationTexts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
     elif last_game.Game.state == GameStates.in_progress:
-        update.message.reply_text("Нельзя присоединиться к запущенной игре")
+        update.message.reply_text(CreationTexts.already_started)
     else:
         logging.debug(f"Unknown game {last_game.Game.id} state")
     session.commit()
@@ -192,8 +177,6 @@ def start_game(update,context):
         .all()
 
     print(created_game.Game.id)
-
-    
     pass
 
 def cancel(update,context):
@@ -240,7 +223,6 @@ def main():
                     CommandHandler('create', create_game),
                     CommandHandler('join', join_game)
                     ],
-
 
             PLAY:   [
                     CommandHandler('start', start), 
