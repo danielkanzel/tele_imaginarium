@@ -9,13 +9,13 @@ from telegram import Update, User
 from error_handler import error_callback
 from models import *
 
-from game_states import GameStates
+from db_enums.game_states import GameStates
 from configs.texts import RegistrationTexts, CreationTexts, CommandsList
 
 
 ## Constants
 TOKEN = '789364882:AAF6-OLy36xTCZB0Y3KQtK0pfZTUuRe56dM' # TODO Убрать в конфиг
-BEGIN, CREATE, PLAY, PREPARE, AWAIT = range(5)
+BEGIN, CREATE, PLAY, PREPARE, AWAIT, START = range(6)
 
 ## SqlAlchemy objects
 engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'\database.db', echo=True)
@@ -42,7 +42,43 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 
 
 
-## Прописываем фичу
+
+
+
+def get_user_info(update, context):
+    
+    user_id = update.message.from_user.id
+    user_data = context.user_data
+    user_message = update.message.text
+    data = {}
+    for variable in ['user_id', "user_data", "user_message"]:
+        data[variable] = eval(variable)
+    return data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#==================================================================================================#
+#======================================  Прописываем фичи  ========================================#
+#==================================================================================================#
+
+
 def start(update, context):
     """
     Проверяем наличие пользователя
@@ -51,45 +87,50 @@ def start(update, context):
     Спрашиваем имя
     Создаем пользователя
     """
-    logging.info("User %s starting bot" % update.effective_chat.id)
+    # get user data
+    user_data = get_user_info(update, context)
+    # init DB session
     session = Session()
 
-    # TODO Добавить всякие проверки на бота
 
-    user_id = update.effective_user.id
-
-    def check_user(session, telegram_id):
+    def check_existing_user(session, telegram_id):
+        """
+        Проверки на наличие пользователя
+        """
+        # TODO Добавить всякие проверки на бота
         player = session.query(Player).filter_by(id=telegram_id).first()
         if not player:
-            logging.info("User %s first time" % update.effective_chat.id)
+            logging.info(f"User {user_data.get('user_id')} first time")
             return False
         else:
-            logging.info("User %s exist" % update.effective_chat.id)
+            logging.info(f"User {user_data.get('user_id')} exist")
     session.close()
 
-    if check_user(session, user_id) == False:
+    if check_existing_user(session, user_data.get('user_id')) == False:
         update.message.reply_text(RegistrationTexts.hello)
         return BEGIN
     else:
         update.message.reply_text(CommandsList.commandslist)
-        return CREATE
+        return PREPARE
 
         
 
 def create_user(update, context):
+    """
+    Создание пользователя, после получения его имени
+    """
     # get user data
-    user_id = update.message.from_user.id
-    user_data = context.user_data
-    name = update.message.text
-    # send data to base
+    user_data = get_user_info(update, context)
+    # init DB session
     session = Session()
-    session.add(Player(id=int(user_id),name=name,points=0))
+
+    session.add(Player(id=int(user_data.get('user_id')),name=user_data.get('user_message'),points=0))
     session.commit() 
     # reply and log
     update.message.reply_text(CommandsList.commandslist)
-    logging.info("User %s added" % user_id)
+    logging.info(f"User {user_data.get('user_id')} added")
     # next state
-    return CREATE
+    return PREPARE
     
 
 
@@ -103,57 +144,61 @@ def create_game(update,context):
     Возвращается ID игры
     """
     # get user data
-    user_id = update.message.from_user.id
-    user_data = context.user_data
-    # send data to base
+    user_data = get_user_info(update, context)
+    # init DB session
     session = Session()
 
     last_game = session.query(Game,Players2Game)\
         .join(Players2Game, Players2Game.game_id == Game.id)\
-        .filter_by(player_id=user_id)\
-        .first()
-    
-    print(last_game.Game.state)
+        .filter_by(player_id=user_data.get('user_id'))\
+        .first() # Получаем статус последней игры пользователя
 
     if last_game == None or last_game.Game.state == GameStates.ended:
-        session.add(Game(state=GameStates.begin,creator=user_id))
-        session.flush()
-        game_id = session.query(Game).filter_by(creator=user_id).first().id
-        session.add(Players2Game(game_id=game_id,player_id=user_id,position=0))
-        session.commit()
-        # reply and log
-        update.message.reply_text(CreationTexts.connectlink.format(game_id=str(game_id)))
-        logging.info(f"User {user_id} create game")
-        return PREPARE
+        new_game = Game(state=GameStates.begin,creator=user_data.get('user_id'))                        # Новый объект игры
+        session.add(new_game)                                                                           # Создаем игру
+        session.flush()                                                                                 # Отправляем
+        # game_id = session.query(Game).filter_by(creator=user_data.get('user_id')).first().id          # Получаем ID игры
+        session.add(Players2Game(game_id=new_game.id,player_id=user_data.get('user_id'),position=0))    # Привязываем игрока к игре
+        session.commit()                                                                                # Отправляем
+        update.message.reply_text(CreationTexts.connectlink.format(game_id=str(new_game.id)))           # Присылаем создателю ID игры
+        logging.info(f"User {user_data.get('user_id')} create game")
+        return START
     elif last_game.Game.state == GameStates.begin:
         update.message.reply_text(CreationTexts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
     elif last_game.Game.state == GameStates.in_progress:
         update.message.reply_text(CreationTexts.already_in_game)
     else:
         logging.debug(f"Unknown game {last_game.Game.id} state")
-    pass
+
+
+
 
 def join_game(update,context):
+    """
+    Получение данных пользователя
+    Получение последней игры пользователя
+    Проверка статуса последней игры пользователя
+    Присоединение к игре, если она в статусе начинающейся
+    """
     # get user data
-    user_id = update.message.from_user.id
-    user_data = context.user_data
-    game_id = update.message.text.split(" ")[1]
-
-    # create db session
+    user_data = get_user_info(update, context)
+    game_id = user_data.get('user_message').split(" ")[1] # Отрезаем команду /join
+    # init DB session
     session = Session()
 
     # get existed games
     last_game = session.query(Game,Players2Game)\
         .join(Players2Game, Players2Game.game_id == Game.id)\
-        .filter_by(player_id=user_id)\
+        .filter_by(player_id=user_data.get('user_id'))\
         .first()
 
-    # check for in_progress games
     if last_game == None or last_game.Game.state == GameStates.ended:
-        session.add(Players2Game(game_id=game_id,player_id=user_id,position=0))
-        session.flush()
-        update.message.reply_text(CreationTexts.succesfully_connected)
-        logging.info(f"User {user_id} join game")
+        session.add(Players2Game(game_id=game_id,player_id=user_data.get('user_id'),position=0))        # Привязываем игрока к игре
+        session.flush()                                                                                 # Отправляем
+        update.message.reply_text(CreationTexts.succesfully_connected)                                  # Текст успеха
+        creator = session.query(Game(id=game_id)).first().creator
+        bot.send_message(chat_id=creator, text="I'm sorry Dave I'm afraid I can't do that.")
+        logging.info(f"User {user_data.get('user_id')} join game")
         return AWAIT
     elif last_game.Game.state == GameStates.begin:
         update.message.reply_text(CreationTexts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
@@ -166,27 +211,29 @@ def join_game(update,context):
 
 def start_game(update,context):
     # get user data
-    user_id = update.message.from_user.id
-    user_data = context.user_data
-    # send data to base
+    user_data = get_user_info(update, context)
+    # init DB session
     session = Session()
+
     # check number of players
     created_game = session.query(Game,Players2Game)\
         .join(Players2Game, Players2Game.game_id == Game.id)\
-        .filter_by(creator=user_id,state=GameStates.begin)\
+        .filter_by(creator=user_data.get('user_id'),state=GameStates.begin)\
         .all()
 
     print(created_game.Game.id)
     pass
 
-def cancel(update,context):
+def end_game(update,context):
     pass
 
 
 
 
 
-
+#==================================================================================================#
+#==================================================================================================#
+#==================================================================================================#
 
 
 
@@ -210,12 +257,12 @@ def main():
                     MessageHandler(Filters.text, create_user)
                     ],
 
-            CREATE: [
+            PREPARE:[
                     CommandHandler('create', create_game),
                     CommandHandler('join', join_game)
                     ],
 
-            PREPARE:[
+            START:  [
                     CommandHandler('begin', start_game)
                     ],
 
@@ -231,7 +278,7 @@ def main():
 
         },
 
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', end_game)]
     )
     dispatcher.add_handler(conv_handler)
 

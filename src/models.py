@@ -1,8 +1,8 @@
 from sqlalchemy import Column, Integer, Text, String, JSON, Enum, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from sqlalchemy_json import MutableJson
-from game_states import GameStates
+
+from db_enums.game_states import GameStates
 
 Base = declarative_base()
 
