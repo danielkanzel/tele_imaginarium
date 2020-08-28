@@ -1,12 +1,15 @@
 
 
-class RegistrationTexts():
+class Texts():
+    commandslist = """/create - создать новую игру,
+/join 123 - присоединиться к игре, где 123 - номер созданной игры
+/begin - запустить созданную игру
+/leave - выйти из игры
+"""
+
     hello = """Привет! Вижу ты у нас впервые!
 Для начала попрошу тебя представиться.
 То имя, которое ты введешь в ответном сообщении будет использоваться в игре."""
-
-
-class CreationTexts():
 
     connectlink = """
 Игра создана, ID {game_id}. 
@@ -22,10 +25,12 @@ class CreationTexts():
 
     already_started = "Нельзя присоединиться к запущенной игре"
 
+    not_in_game = "Вы не в игре"
 
+    leave_success = "Вы вышли из игры"
 
+    game_ended_notification = "Игрок {player_id} завершил игру"
 
+    unable_to_connect = "Невозможно подключиться к этой игре"
 
-class CommandsList():
-    commandslist = """/create - создать новую игру,
-/join 123 - присоединиться к игре, где 123 - номер созданной игры"""
+    unable_to_begin = "Слишком мало игроков"

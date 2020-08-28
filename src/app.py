@@ -1,6 +1,7 @@
 import telegram
-from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, Filters
+from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters
 import logging
+import random
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -10,7 +11,7 @@ from error_handler import error_callback
 from models import *
 
 from db_enums.game_states import GameStates
-from configs.texts import RegistrationTexts, CreationTexts, CommandsList
+from configs.texts import Texts
 
 
 ## Constants
@@ -46,7 +47,6 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 
 
 def get_user_info(update, context):
-    
     user_id = update.message.from_user.id
     user_data = context.user_data
     user_message = update.message.text
@@ -55,7 +55,13 @@ def get_user_info(update, context):
         data[variable] = eval(variable)
     return data
 
-
+def get_last_game(session,user_data):
+    last_game = session.query(Game,Players2Game)\
+        .join(Players2Game, Players2Game.game_id == Game.id)\
+        .filter_by(player_id=user_data.get('user_id'))\
+        .order_by(Game.id.desc())\
+        .first() # Получаем статус последней игры пользователя
+    return last_game
 
 
 
@@ -107,10 +113,10 @@ def start(update, context):
     session.close()
 
     if check_existing_user(session, user_data.get('user_id')) == False:
-        update.message.reply_text(RegistrationTexts.hello)
+        update.message.reply_text(Texts.hello)
         return BEGIN
     else:
-        update.message.reply_text(CommandsList.commandslist)
+        update.message.reply_text(Texts.commandslist)
         return PREPARE
 
         
@@ -127,7 +133,7 @@ def create_user(update, context):
     session.add(Player(id=int(user_data.get('user_id')),name=user_data.get('user_message'),points=0))
     session.commit() 
     # reply and log
-    update.message.reply_text(CommandsList.commandslist)
+    update.message.reply_text(Texts.commandslist)
     logging.info(f"User {user_data.get('user_id')} added")
     # next state
     return PREPARE
@@ -147,28 +153,30 @@ def create_game(update,context):
     user_data = get_user_info(update, context)
     # init DB session
     session = Session()
-
-    last_game = session.query(Game,Players2Game)\
-        .join(Players2Game, Players2Game.game_id == Game.id)\
-        .filter_by(player_id=user_data.get('user_id'))\
-        .first() # Получаем статус последней игры пользователя
+    # get last game
+    last_game = get_last_game(session,user_data)
 
     if last_game == None or last_game.Game.state == GameStates.ended:
         new_game = Game(state=GameStates.begin,creator=user_data.get('user_id'))                        # Новый объект игры
         session.add(new_game)                                                                           # Создаем игру
         session.flush()                                                                                 # Отправляем
         # game_id = session.query(Game).filter_by(creator=user_data.get('user_id')).first().id          # Получаем ID игры
-        session.add(Players2Game(game_id=new_game.id,player_id=user_data.get('user_id'),position=0))    # Привязываем игрока к игре
-        session.commit()                                                                                # Отправляем
-        update.message.reply_text(CreationTexts.connectlink.format(game_id=str(new_game.id)))           # Присылаем создателю ID игры
+        session.add(Players2Game(game_id=new_game.id,player_id=user_data.get('user_id'),position=0))    # Привязываем игрока к игре                                                                             # Отправляем
+        update.message.reply_text(Texts.connectlink.format(game_id=str(new_game.id)))                    # Присылаем создателю ID игры
         logging.info(f"User {user_data.get('user_id')} create game")
+        session.commit()
         return START
     elif last_game.Game.state == GameStates.begin:
-        update.message.reply_text(CreationTexts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
+        update.message.reply_text(Texts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
+        session.close()
+        return START
     elif last_game.Game.state == GameStates.in_progress:
-        update.message.reply_text(CreationTexts.already_in_game)
+        update.message.reply_text(Texts.already_in_game)
+        session.close()
+        return PLAY
     else:
         logging.debug(f"Unknown game {last_game.Game.id} state")
+        session.close()
 
 
 
@@ -179,62 +187,229 @@ def join_game(update,context):
     Получение последней игры пользователя
     Проверка статуса последней игры пользователя
     Присоединение к игре, если она в статусе начинающейся
+    Оповещение всех присоединившихся о том, кто зашел в лобби
     """
     # get user data
     user_data = get_user_info(update, context)
-    game_id = user_data.get('user_message').split(" ")[1] # Отрезаем команду /join
+    try:
+        game_id = user_data.get('user_message').split(" ")[1] # Отрезаем команду /join
+    except:
+        update.message.reply_text(Texts.unable_to_connect)
+        return
     # init DB session
     session = Session()
+    # get last game
+    last_game = get_last_game(session,user_data)
+    # get game to connect info
+    game_to_connect = session.query(Game).filter_by(id=game_id).first()        
 
-    # get existed games
-    last_game = session.query(Game,Players2Game)\
-        .join(Players2Game, Players2Game.game_id == Game.id)\
-        .filter_by(player_id=user_data.get('user_id'))\
-        .first()
+
+    # Проверочки на левый ID игры
+    try:
+        int(game_id)
+    except:
+        update.message.reply_text(Texts.unable_to_connect)   # Не цифрой
+        return
+    if game_to_connect == None:
+        update.message.reply_text(Texts.unable_to_connect)   # Не пустой
+        return
+    if game_to_connect.state != GameStates.begin:
+        update.message.reply_text(Texts.unable_to_connect)   # Не фуфло
+        return
+
 
     if last_game == None or last_game.Game.state == GameStates.ended:
         session.add(Players2Game(game_id=game_id,player_id=user_data.get('user_id'),position=0))        # Привязываем игрока к игре
         session.flush()                                                                                 # Отправляем
-        update.message.reply_text(CreationTexts.succesfully_connected)                                  # Текст успеха
-        creator = session.query(Game(id=game_id)).first().creator
-        bot.send_message(chat_id=creator, text="I'm sorry Dave I'm afraid I can't do that.")
+        update.message.reply_text(Texts.succesfully_connected)                                          # Текст успеха
+        players = session.query(Players2Game).filter_by(game_id=game_id).all()
+        connected_player = session.query(Player).filter_by(id=user_data.get('user_id')).first()
+        session.commit()
+        for player in players:
+            bot.send_message(chat_id=player.player_id, text=f"Игрок {connected_player.name} присоединился!")
         logging.info(f"User {user_data.get('user_id')} join game")
+
+        
         return AWAIT
     elif last_game.Game.state == GameStates.begin:
-        update.message.reply_text(CreationTexts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
+        update.message.reply_text(Texts.remindconnectlink.format(game_id=str(last_game.Game.id)))
+        session.close()
+        return AWAIT
     elif last_game.Game.state == GameStates.in_progress:
-        update.message.reply_text(CreationTexts.already_started)
+        update.message.reply_text(Texts.already_started)
+        session.close()
+        return PLAY
     else:
         logging.debug(f"Unknown game {last_game.Game.id} state")
-    session.commit()
+        session.close()
+
+
+
+
+
 
 
 def start_game(update,context):
+    """
+    Проверяем количество игроков
+    Переводим игру в статус "in_progress"
+    Раздаем всем игрокам равное количество рандомных карточек 
+    """
     # get user data
     user_data = get_user_info(update, context)
     # init DB session
     session = Session()
+    # get last game
+    last_game = get_last_game(session,user_data)
 
-    # check number of players
-    created_game = session.query(Game,Players2Game)\
-        .join(Players2Game, Players2Game.game_id == Game.id)\
-        .filter_by(creator=user_data.get('user_id'),state=GameStates.begin)\
-        .all()
 
-    print(created_game.Game.id)
+    players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id)).all()
+    if len(players) < 3:  # check number of players
+        update.message.reply_text(Texts.unable_to_begin)
+        session.close()
+    elif players == None:
+        update.message.reply_text(Texts.unable_to_begin)
+        session.close()
+    else:
+        game_to_end = session.query(Game).filter_by(id=last_game.Game.id).first()
+        game_to_end.state = GameStates.in_progress
+        cards = session.query(Cards).all()
+        cards_set = set()
+        for card in cards:
+            cards_set.add(card.id)
+
+        hand_size = len(cards_set) // len(players)
+
+        for player in players:
+            for i in hand_size:
+                session.add(Hands(
+                    player_id=player.id,
+                    game_id=str(last_game.Game.id)),
+                    card_id=cards_set.pop()
+                )
+                session.flush()
+
+        for player in players:
+            bot.send_message(chat_id=player.player_id, text=f"Карты раскиданы, игра началась!")
+
+        secret_card(update,context)
+        
+
+
+
+def secret_card(update,context):
+    """
+    Рассылаем всем игрокам сообщение о том, чей ход
+    Присылаем ходящему набор карточек
+    Переводим в стейт, где дадим ему шанс прислать номер карточки
+    """
+    # get user data
+    user_data = get_user_info(update, context)
+    # init DB session
+    session = Session()
+    # get last game
+    last_game = get_last_game(session,user_data)
+
+    players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id)).all()
+
+
+
+def secret_word(update,context):
+    """
+    Получаем номер карточки и сохраняем
+    Переводим в стейт, где спрашиваем секретное слово
+    """
     pass
 
-def end_game(update,context):
+def turn(update,context):
+    """
+    Получаем секретное слово и сохраняем
+    Рассылаем всем игрокам секретное слово
+    Переводим в стейт ожидания
+    """
+    pass
+
+def card(update,context):
+    """
+    Эта функция должна быть доступна в стейте ожидания, но работать только когда загадано секретное слово
+    Предлагается выбрать свою карточку, соответствующую секретному слову
+    Когда выставляется карта, на ней прописывается признак хода
+    Когда выбираешь карточку - всем отображается сообщение о том что ты поставил карту
+    когда последний поставил карточку - всем отображается реальный результат и очки
+    Следующий ведущий переходит в стейт игры
+    Остальные в ожидание
+    """
     pass
 
 
 
 
 
-#==================================================================================================#
-#==================================================================================================#
-#==================================================================================================#
+def leave_game(update,context):
+    """
+    Отсоединяет пользователя от игры
+    Завершает игру
+    """
+    # get user data
+    user_data = get_user_info(update, context)
+    # init DB session
+    session = Session()
+    # get last game
+    last_game = get_last_game(session,user_data)
 
+
+
+    if last_game == None or last_game.Game.state == GameStates.ended:
+        update.message.reply_text(Texts.not_in_game)
+        session.close()
+        return PREPARE
+    elif last_game.Game.state in (GameStates.begin,GameStates.in_progress):
+        players = session.query(Players2Game).filter_by(game_id=last_game.Game.id).all()
+        game_to_end = session.query(Game).filter_by(id=last_game.Game.id).first()
+        game_to_end.state = GameStates.ended
+        leaver_name = str(session.query(Player).filter_by(id=user_data.get('user_id')).first().name)
+        for player in players:
+            bot.send_message(chat_id=player.player_id, text=Texts.game_ended_notification.format(player_id=leaver_name))
+        logging.info(f"User {user_data.get('user_id')} leave game")
+        session.commit()
+        return PREPARE
+    else:
+        logging.debug(f"Unknown game {last_game.Game.id} state")
+
+
+
+
+
+
+
+def unknown_message(update,context):
+    """
+    Удаляет непонятные сообщения
+    """
+    bot.delete_message(chat_id=update.message.from_user.id,
+               message_id=update.message.message_id)
+    bot.sendMessage(chat_id=update.message.chat_id, text=Texts.commandslist)
+
+
+
+
+
+
+def unknown_command(update,context):
+    """
+    Удаляет непонятные команды
+    """
+    bot.delete_message(chat_id=update.message.from_user.id,
+               message_id=update.message.message_id)
+    bot.sendMessage(chat_id=update.message.chat_id, text=Texts.commandslist)
+
+
+
+
+
+#==================================================================================================#
+#==================================================================================================#
+#==================================================================================================#
 
 
 
@@ -259,26 +434,36 @@ def main():
 
             PREPARE:[
                     CommandHandler('create', create_game),
-                    CommandHandler('join', join_game)
+                    CommandHandler('join', join_game),
+                    # MessageHandler(Filters.text, unknown_message),
+                    # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ],
 
             START:  [
-                    CommandHandler('begin', start_game)
+                    CommandHandler('begin', start_game),
+                    CommandHandler('leave',leave_game),
+                    # MessageHandler(Filters.text, unknown_message),
+                    # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ],
 
             AWAIT:  [
                     CommandHandler('create', create_game),
-                    CommandHandler('join', join_game)
+                    CommandHandler('join', join_game),
+                    CommandHandler('leave',leave_game),
+                    # MessageHandler(Filters.text, unknown_message),
+                    # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ],
 
             PLAY:   [
-                    CommandHandler('start', start), 
-                    MessageHandler(Filters.text, create_game)
+                    CommandHandler('start', start),
+                    CommandHandler('leave',leave_game),
+                    # MessageHandler(Filters.text, unknown_message),
+                    # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ]
 
         },
 
-        fallbacks=[CommandHandler('cancel', end_game)]
+        fallbacks=[CommandHandler('cancel', leave_game)]
     )
     dispatcher.add_handler(conv_handler)
 
