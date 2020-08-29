@@ -1,7 +1,6 @@
 import telegram
 from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters
 import logging
-import random
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -159,8 +158,7 @@ def create_game(update,context):
     if last_game == None or last_game.Game.state == GameStates.ended:
         new_game = Game(state=GameStates.begin,creator=user_data.get('user_id'))                        # Новый объект игры
         session.add(new_game)                                                                           # Создаем игру
-        session.flush()                                                                                 # Отправляем
-        # game_id = session.query(Game).filter_by(creator=user_data.get('user_id')).first().id          # Получаем ID игры
+        session.flush()                                                                                 # Отправляем 
         session.add(Players2Game(game_id=new_game.id,player_id=user_data.get('user_id'),position=0))    # Привязываем игрока к игре                                                                             # Отправляем
         update.message.reply_text(Texts.connectlink.format(game_id=str(new_game.id)))                    # Присылаем создателю ID игры
         logging.info(f"User {user_data.get('user_id')} create game")
@@ -219,7 +217,12 @@ def join_game(update,context):
 
 
     if last_game == None or last_game.Game.state == GameStates.ended:
-        session.add(Players2Game(game_id=game_id,player_id=user_data.get('user_id'),position=0))        # Привязываем игрока к игре
+        previous_player = session.query(Players2Game).filter_by(game_id=game_id).first()
+        if previous_player == None:
+            position = 0
+        else:
+            position = previous_player.position + 1
+        session.add(Players2Game(game_id=game_id,player_id=user_data.get('user_id'),position=position))        # Привязываем игрока к игре
         session.flush()                                                                                 # Отправляем
         update.message.reply_text(Texts.succesfully_connected)                                          # Текст успеха
         players = session.query(Players2Game).filter_by(game_id=game_id).all()
@@ -281,18 +284,18 @@ def start_game(update,context):
         hand_size = len(cards_set) // len(players)
 
         for player in players:
-            for i in hand_size:
+            for i in range(hand_size):
                 session.add(Hands(
-                    player_id=player.id,
-                    game_id=str(last_game.Game.id)),
-                    card_id=cards_set.pop()
-                )
-                session.flush()
+                    player_id=player.player_id,
+                    game_id=str(last_game.Game.id),
+                    turn_id=str(cards_set.pop())
+                ))
+                session.commit()
 
         for player in players:
             bot.send_message(chat_id=player.player_id, text=f"Карты раскиданы, игра началась!")
 
-        secret_card(update,context)
+        return secret_card(update,context)
         
 
 
@@ -300,7 +303,7 @@ def start_game(update,context):
 def secret_card(update,context):
     """
     Рассылаем всем игрокам сообщение о том, чей ход
-    Присылаем ходящему набор карточек
+    Присылаем всем их набор карточек
     Переводим в стейт, где дадим ему шанс прислать номер карточки
     """
     # get user data
@@ -310,7 +313,24 @@ def secret_card(update,context):
     # get last game
     last_game = get_last_game(session,user_data)
 
-    players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id)).all()
+    players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id))
+
+    last_turn = session.query(Turn).filter_by(game_id=str(last_game.Game.id))
+
+    print("""
+    ===============================================
+    Here we go
+    +++++++++++++++++++++++++++++++++++++++++++++++
+    """)
+
+    if last_turn == None:
+        current_player = players.filter_by(position=0)
+    else:
+        previous_player_id = session.query()
+        current_player = session.query()
+
+    for player in players.all():
+        bot.send_message(chat_id=player.player_id, text=f"Карты раскиданы, игра началась!")
 
 
 

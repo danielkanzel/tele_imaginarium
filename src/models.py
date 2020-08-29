@@ -28,14 +28,17 @@ class Players2Game(Base):
     position = Column(Integer)
     game = relationship("Game",back_populates="players2game")
     player = relationship("Player",back_populates="players2game")
+    turn = relationship("Turn",back_populates="players2game")
 
 class Turn(Base):
     __tablename__ = "turn"
     id = Column(Integer, primary_key=True)
+    players2game_id = Column(Integer, ForeignKey('players2game.id')) 
     game_id = Column(Integer)
     cards_hands = Column(JSON)
     cards_table = Column(JSON)
     phrase = Column(String)
+    players2game = relationship("Players2Game", back_populates="turn")
 
 class Hands(Base):
     __tablename__ = "hands"
