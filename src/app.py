@@ -2,7 +2,7 @@ import telegram
 from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, PicklePersistence
 import logging
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
 from telegram import Update, User, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -83,6 +83,7 @@ def start(update, context):
 
     if not player:
         if user.is_bot == True:
+            session.close()
             return # В жеппь ботов
         session.add(Player(id=int(user.id),name=user.username,points=0))
         session.commit() 
@@ -112,7 +113,7 @@ def create_game(update,context):
         new_game = Game(state=GameStates.begin,creator=user.id)                              # Новый объект игры
         session.add(new_game)                                                                # Создаем игру
         session.flush()                                                                      # Отправляем 
-        session.add(Players2Game(game_id=new_game.id,player_id=user.id,position=0))          # Привязываем игрока к игре                                                                             # Отправляем
+        session.add(Players2Game(game_id=new_game.id,player_id=user.id,position=0))          # Привязываем игрока к игре
         update.message.reply_text(Texts.connectlink.format(game_id=str(new_game.id)))        # Присылаем создателю ID игры
         logging.info(f"User {user.id} create game")
         session.commit()
@@ -140,21 +141,19 @@ def join_game(update,context):
     user = update.message.from_user                 # get user data
     session = Session()                             # init DB session
     last_game = get_last_game(session,user)         # get last game
+    session.close()
 
     if last_game == None or last_game.Game.state == GameStates.ended:
         update.message.reply_text(Texts.try_to_join)
         return JOINING
     elif last_game.Game.state == GameStates.begin:
         update.message.reply_text(Texts.remindconnectlink.format(game_id=str(last_game.Game.id)))
-        session.close()
         return AWAIT
     elif last_game.Game.state == GameStates.in_progress:
         update.message.reply_text(Texts.already_started)
-        session.close()
         return PREPARE
     else:
         logging.debug(f"Unknown game {last_game.Game.id} state")
-        session.close()
 
 
 
@@ -179,21 +178,23 @@ def joining(update,context):
         int(message.text)
     except:
         message.reply_text(Texts.unable_to_connect)   # Не буквами
+        session.close()
         return
-
     game_to_connect = session.query(Game).filter_by(id=message.text).first()
 
     if game_to_connect == None:
         message.reply_text(Texts.unable_to_connect)   # Не фуфло
+        session.close()
         return
     if game_to_connect.state != GameStates.begin:
         message.reply_text(Texts.unable_to_connect)   # Не устаревший
+        session.close()
         return
 
 
     
     # Выставляем очередность
-    previous_player = session.query(Players2Game).filter_by(game_id=message.text).first()
+    previous_player = session.query(Players2Game).filter_by(game_id=message.text).order_by(desc(Players2Game.position)).first()
     if previous_player == None:
         position = 0
     else:
@@ -206,6 +207,7 @@ def joining(update,context):
         update.message.reply_text(Texts.succesfully_connected)                                  # Текст успеха
     else:
         message.reply_text(Texts.unable_to_connect)
+        session.close()
         return PREPARE
 
 
@@ -255,7 +257,7 @@ def begin_game(update,context):
                     game_id=str(last_game.Game.id),
                     card_id=str(cards_set.pop())
                 ))
-                session.commit()
+        session.commit()
 
         for player in players:
             bot.send_message(chat_id=player.player_id, text=f"Карты раскиданы, игра началась!")
@@ -278,8 +280,9 @@ def secret_card(update,context):
     players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id))
     last_turn = session.query(Turn).filter_by(game_id=str(last_game.Game.id))
 
+
     # Определяем чей ход
-    if last_turn == None:
+    if last_turn.first() == None:
         current_player = players.filter_by(position=0).first()
     else:
         players_in_game = players.count()
@@ -292,22 +295,30 @@ def secret_card(update,context):
 
         current_player = players.filter_by(position=current_player_position).first()
 
-    current_player_name = session.query(Player).filter_by(id=current_player.player_id).first().name
+    # Создаем ход
+    session.add(Turn(
+                    players2game_id=current_player.player_id,
+                    game_id=str(last_game.Game.id)
+                ))
+    
+    session.commit()
 
     # Рассылаем инфу о ходящем
+    current_player = session.query(Player).filter_by(id=current_player.player_id).first()
     for player in players.all():
-        bot.send_message(chat_id=player.player_id, text=f"Ходит {current_player_name}")
+        bot.send_message(chat_id=player.player_id, text=f"Ходит {current_player.name}")
 
-    # Рассылаем наборы карточек, которые должны переключаться
-    for player in player.all():
-        player_cards = session.query(Hands).filter_by(game_id=last_game.Game.id, player_id=player.id, turn_id=None)
+        first_card = session.query(Hands).filter_by(game_id=last_game.Game.id, player_id=player.id, turn_id=None).first()
         # Кнопочки
         keyboard = [[InlineKeyboardButton("<", callback_data='<'),
-                     InlineKeyboardButton(">", callback_data='>')],
-                    [InlineKeyboardButton("Выбрать", callback_data='choose')]]
+                     InlineKeyboardButton(">", callback_data='>')]]
+        if player.id == current_player.id:
+            keyboard.append([InlineKeyboardButton("Выбрать", callback_data='choose')])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        bot.send_message(chat_id=player.player_id, text="Выберите картинку:")
+        bot.send_message(chat_id=player.player_id, text="Ваши карты:", reply_markup=reply_markup)
+
+    session.close()
         
 
 
