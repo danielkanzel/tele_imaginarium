@@ -35,16 +35,13 @@ class Turn(Base):
     id = Column(Integer, primary_key=True)
     players2game_id = Column(Integer, ForeignKey('players2game.id')) 
     game_id = Column(Integer)
-    cards_hands = Column(JSON)
-    cards_table = Column(JSON)
     phrase = Column(String)
     players2game = relationship("Players2Game", back_populates="turn")
 
 class Hands(Base):
     __tablename__ = "hands"
     id = Column(Integer, primary_key=True)
-    player_id = Column(Integer, ForeignKey('player.id'))    # Линк к игроку, позволяет понять, чья карта
-    game_id = Column(Integer, ForeignKey('game.id'))        # Линк к игре, помогает понять, в какой игре
+    players2game_id = Column(Integer, ForeignKey('players2game.id')) 
     card_id = Column(Integer, ForeignKey('cards.id'))       # Линк к карте, позволяет контролировать ренж карт
     turn_id = Column(Integer, ForeignKey('turn.id'))        # Линк к ходу, заполняется, когда карта кладется на стол
 

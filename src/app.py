@@ -1,7 +1,9 @@
 import telegram
-from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, PicklePersistence
+from telegram import InputMediaPhoto
+from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, PicklePersistence, CallbackQueryHandler
 import logging
 import os
+import random
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker
 from telegram import Update, User, InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,34 +17,34 @@ from configs.texts import Texts
 
 ## Constants
 TOKEN = '789364882:AAF6-OLy36xTCZB0Y3KQtK0pfZTUuRe56dM' # TODO Убрать в конфиг
-CREATE, PLAY, PREPARE, AWAIT, START, JOINING = range(6)
+CREATE, PLAY, PREPARE, AWAIT, START, JOINING, SECRET = range(7)
 
 ## SqlAlchemy objects
-engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'\database.db', echo=True)
+engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'\database.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 
 ## Telegram objects
 bot = telegram.Bot(token=TOKEN)
-updater = Updater(token=TOKEN, persistence=PicklePersistence(filename='persistence_file'), use_context=True)
+updater = Updater(
+    token=TOKEN, 
+    persistence=PicklePersistence(filename='persistence_file'), 
+    use_context=True
+    )
 dispatcher = updater.dispatcher
 dispatcher.add_error_handler(error_callback)
-# import sqlalchemy
-# print(bot.get_me())   #Для отладки
 
 
 ## Настройка логирования
 logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+        level=logging.INFO
         )
-logging.getLogger("telegram").setLevel(logging.INFO)
-# logging.getLogger("sqlalchemy").setLevel(logging.INFO)
+logging.getLogger(__name__)
+# logging.getLogger("telegram").setLevel(logging.INFO)
+logging.getLogger('sqlalchemy').setLevel(logging.DEBUG)
 # logging.getLogger("urllib3").setLevel(logging.NOTSET)
-
-
-
-
 
 
 
@@ -85,7 +87,11 @@ def start(update, context):
         if user.is_bot == True:
             session.close()
             return # В жеппь ботов
-        session.add(Player(id=int(user.id),name=user.username,points=0))
+        session.add(Player(
+            id=int(user.id),
+            name=user.username,
+            points=0)
+            )
         session.commit() 
         update.message.reply_text(Texts.commandslist)
         logging.info(f"New user {user.id} added")
@@ -119,7 +125,7 @@ def create_game(update,context):
         session.commit()
         return START
     elif last_game.Game.state == GameStates.begin:
-        update.message.reply_text(Texts.remindconnectlink.format(game_id=str(str(last_game.Game.id))))
+        update.message.reply_text(Texts.remindconnectlink.format(game_id=str(last_game.Game.id)))
         session.close()
         return START
     elif last_game.Game.state == GameStates.in_progress:
@@ -237,28 +243,31 @@ def begin_game(update,context):
     if len(players) < 3:  # Для игры нужно минимум трое
         update.message.reply_text(Texts.unable_to_begin)
         session.close()
-    elif players == None:
+    elif players == None: # Хз когда вызывается, возможно излишняя защита
         update.message.reply_text(Texts.unable_to_begin)
         session.close()
     else:
-        game_to_end = session.query(Game).filter_by(id=last_game.Game.id).first()
-        game_to_end.state = GameStates.in_progress
+        # Статус in progress
+        current_game = session.query(Game).filter_by(id=last_game.Game.id).first()
+        current_game.state = GameStates.in_progress
+
+        # Делим карты на всех, без остатка, в случайном порядке
         cards = session.query(Cards).all()
-        cards_set = set()
+        cards_list = []
         for card in cards:
-            cards_set.add(card.id)
-
-        hand_size = len(cards_set) // len(players)
-
+            cards_list.append(card.id)
+        hand_size = len(cards_list) // len(players)
         for player in players:
             for i in range(hand_size):
                 session.add(Hands(
-                    player_id=player.player_id,
-                    game_id=str(last_game.Game.id),
-                    card_id=str(cards_set.pop())
+                    players2game_id=player.id,
+                    card_id=str(random.sample(cards_list,1)[0])
                 ))
+        
+        # Загружаем вышеописанное в базу
         session.commit()
 
+        # Уведомление на всех, что игра началась
         for player in players:
             bot.send_message(chat_id=player.player_id, text=f"Карты раскиданы, игра началась!")
 
@@ -278,16 +287,15 @@ def secret_card(update,context):
     last_game = get_last_game(session,user)         # get last game
 
     players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id))
-    last_turn = session.query(Turn).filter_by(game_id=str(last_game.Game.id))
+    last_turn = session.query(Turn).filter_by(game_id=str(last_game.Game.id)).first()
 
 
     # Определяем чей ход
-    if last_turn.first() == None:
+    if last_turn == None:
         current_player = players.filter_by(position=0).first()
     else:
         players_in_game = players.count()
         previous_player_position = players.filter_by(player_id=last_turn.players2game_id).first().position
-        current_player_position = 0
         if previous_player_position < players_in_game:
             current_player_position = previous_player_position + 1
         elif previous_player_position == players_in_game:
@@ -306,17 +314,30 @@ def secret_card(update,context):
     # Рассылаем инфу о ходящем
     current_player = session.query(Player).filter_by(id=current_player.player_id).first()
     for player in players.all():
-        bot.send_message(chat_id=player.player_id, text=f"Ходит {current_player.name}")
+        bot.send_message(
+            chat_id=player.player_id, 
+            text=f"Ходит {current_player.name}"
+            )
+        first_card = session.query(Hands).filter_by(
+            players2game_id=player.id, 
+            turn_id=None
+            ).order_by(Hands.id.desc()).first()
+        first_card_image = session.query(Cards).filter_by(id=first_card.card_id).first().path
 
-        first_card = session.query(Hands).filter_by(game_id=last_game.Game.id, player_id=player.id, turn_id=None).first()
         # Кнопочки
-        keyboard = [[InlineKeyboardButton("<", callback_data='<'),
-                     InlineKeyboardButton(">", callback_data='>')]]
-        if player.id == current_player.id:
+        keyboard = [[InlineKeyboardButton("<", callback_data='previous_card'),
+                     InlineKeyboardButton(">", callback_data='next_card')]]
+        if player.player_id == current_player.id:
             keyboard.append([InlineKeyboardButton("Выбрать", callback_data='choose')])
         reply_markup = InlineKeyboardMarkup(keyboard)
+        logging.info(f"User {user.id} got cards")
 
-        bot.send_message(chat_id=player.player_id, text="Ваши карты:", reply_markup=reply_markup)
+        bot.send_photo(
+            chat_id=player.player_id, 
+            photo=first_card_image, 
+            reply_markup=reply_markup,
+            caption="1/5"
+            )
 
     session.close()
         
@@ -325,64 +346,259 @@ def secret_card(update,context):
 def next_card(update,context):
     """
     Действие при нажатии на кнопку '>'
-    Получаем предыдущее сообщение и меняем картинку на следующую из последних 5 карточек
-    Как понять, какая картинка была в сообщении? Можно по URL!
+    Получаем предыдущее сообщение и меняем картинку на следующую
     """
-    
-    keyboard = [[InlineKeyboardButton("<", callback_data='<'),
-                     InlineKeyboardButton(">", callback_data='>')],
-                    [InlineKeyboardButton("Выбрать", callback_data='choose')]]
+    user = update.callback_query.message.chat       # get user data
+    session = Session()                             # init DB session
+    last_game = get_last_game(session,user)         # get last game
+
+    current_card_order = int(update.callback_query.message.caption.split("/")[0])
+
+    current_player = session.query(Players2Game).filter_by(
+        player_id=user.id, 
+        game_id=last_game.Game.id
+        ).first()
+
+    cards_on_hands = session.query(Hands).filter_by(
+        players2game_id=current_player.id, 
+        turn_id=None
+        ).order_by(Hands.id.desc()).limit(5)
+
+    if current_card_order == 5:
+        next_card = cards_on_hands[0]
+        next_card_order = 1
+    else:
+        next_card = cards_on_hands[current_card_order]
+        next_card_order = current_card_order + 1
+
+    next_card = session.query(Cards).filter_by(id=next_card.card_id).first()
+
+    last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
+
+    keyboard = [[InlineKeyboardButton("<", callback_data='previous_card'),
+                InlineKeyboardButton(">", callback_data='next_card')]]
+    if last_turn.players2game_id == user.id:
+        keyboard.append([InlineKeyboardButton("Загадать эту карту", callback_data='choose')])
+    else:
+        keyboard.append([InlineKeyboardButton("Предложить эту карту к фразе", callback_data='suggest')])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    query = update.callback_query
-    bot.edit_message_text(text='Выберите картинку:',
-                            reply_markup=reply_markup,
-                            chat_id=query.message.chat_id,
-                            message_id=query.message.message_id)
+    update.callback_query.message.edit_media(
+        media=InputMediaPhoto(
+            media=next_card.path,
+            caption=f'{str(next_card_order)}/5'
+        ),
+        reply_markup=reply_markup
+    )
+    session.close()
     pass
+
+# Как разрулить проблему, когда надо переключать карты по конкретной игре, во всех выбиралках? - Удалять старые выбиралки, тщательно вычищать лог игры
 
 def previous_card(update,context):
     """
     Действие при нажатии на кнопку '<'
-    Получаем предыдущее сообщение и меняем картинку на предыдущую из последних 5 карточек
+    Получаем предыдущее сообщение и меняем картинку на предыдущую
     """
+    user = update.callback_query.message.chat       # get user data
+    session = Session()                             # init DB session
+    last_game = get_last_game(session,user)         # get last game
+
+    current_card_order = int(update.callback_query.message.caption.split("/")[0])
+
+    current_player = session.query(Players2Game).filter_by(
+        player_id=user.id, 
+        game_id=last_game.Game.id
+        ).first()
+
+    cards_on_hands = session.query(Hands).filter_by(
+        players2game_id=current_player.id, 
+        turn_id=None
+        ).order_by(Hands.id.desc()).limit(5)
+
+    if current_card_order == 1:
+        previous_card = cards_on_hands[4]
+        previous_card_order = 5
+    else:
+        previous_card = cards_on_hands[current_card_order-2]
+        previous_card_order = current_card_order - 1
+
+    previous_card = session.query(Cards).filter_by(id=previous_card.card_id).first()
+
+    last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
+
+    keyboard = [[InlineKeyboardButton("<", callback_data='previous_card'),
+                InlineKeyboardButton(">", callback_data='next_card')]]
+    if last_turn.players2game_id == user.id:
+        keyboard.append([InlineKeyboardButton("Выбрать", callback_data='choose')])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.callback_query.message.edit_media(
+        media=InputMediaPhoto(
+            media=previous_card.path,
+            caption=f'{str(previous_card_order)}/5'
+        ),
+        reply_markup=reply_markup
+    )
+    session.close()
     pass
 
 def choose_card(update,context):
     """
     Действие при нажатии на кнопку 'Выбрать карту'
-    """
-    pass
-
-
-
-
-def secret_word(update,context):
-    """
     Получаем номер карточки и сохраняем
     Переводим в стейт, где спрашиваем секретное слово
     """
-    pass
+    user = update.callback_query.message.chat       # get user data
+    session = Session()                             # init DB session
+    last_game = get_last_game(session,user)         # get last game
 
-def turn(update,context):
+    # Получаем данные для отрисовки ответа
+    current_card_order = int(update.callback_query.message.caption.split("/")[0])
+
+    current_player = session.query(Players2Game).filter_by(
+        player_id=user.id, 
+        game_id=last_game.Game.id
+        ).first()
+
+    cards_on_hands = session.query(Hands).filter_by(
+        players2game_id=current_player.id, 
+        turn_id=None
+        ).order_by(Hands.id.desc()).limit(5)    
+    
+    current_card = cards_on_hands[current_card_order - 1]
+    
+    current_card_image = session.query(Cards).filter_by(id=current_card.card_id).first().path
+
+    # Обновляем БД
+    last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
+    current_card.turn_id = last_turn.id
+    session.flush()
+
+    # Отправляем сообщение
+    update.callback_query.message.edit_media(
+        media=InputMediaPhoto(
+            media=current_card_image,
+            caption="Теперь введите фразу:"
+        )
+    )
+
+    session.commit()
+    
+
+
+
+def start_turn(update,context):
     """
     Получаем секретное слово и сохраняем
-    Рассылаем всем игрокам секретное слово
+    Если секретное слово не вовремя - удаляем
+    Рассылаем всем игрокам секретное слово и карточки
     Переводим в стейт ожидания
     """
-    pass
+    user = update.message.from_user                 # get user data
+    session = Session()                             # init DB session
+    last_game = get_last_game(session,user)         # get last game
 
-def card(update,context):
+    # Получаем секретное слово и сохраняем
+    last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
+    last_turn.phrase = update.message.text
+    session.commit()
+
+    # Рассылаем всем игрокам секретное слово
+    players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id))
+    for player in players.all():
+        if player.player_id == user.id:
+            bot.send_message(chat_id=player.player_id, text="Ожидание действий остальных игроков")
+        else:
+            bot.send_message(chat_id=player.player_id, text=f"Игрок {str(user.username)} загадал {str(last_turn.phrase)}")
+
+    session.close()
+    
+    # Переводим в стейт ожидания
+    return AWAIT
+
+def suggest_card(update,context):
     """
-    Эта функция должна быть доступна в стейте ожидания, но работать только когда загадано секретное слово
-    Предлагается выбрать свою карточку, соответствующую секретному слову
-    Когда выставляется карта, на ней прописывается признак хода
-    Когда выбираешь карточку - всем отображается сообщение о том что ты поставил карту
-    когда последний поставил карточку - всем отображается реальный результат и очки
-    Следующий ведущий переходит в стейт игры
-    Остальные в ожидание
+    # Эта функция должна быть доступна в стейте ожидания, но работать только когда загадано секретное слово
+    # Предлагается выбрать свою карточку, соответствующую секретному слову
+    # Когда выставляется карта, на ней прописывается признак хода
+    # когда последний поставил карточку - всем отображается реальный результат и очки
+    # Следующий ведущий переходит в стейт игры
+    # Остальные в ожидание
     """
-    pass
+    user = update.callback_query.message.chat       # get user data
+    session = Session()                             # init DB session
+    last_game = get_last_game(session,user)         # get last game
+
+    last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
+
+    if not last_turn.phrase:
+        return # Будет работать только с фразой
+
+    # Получаем данные для отрисовки ответа
+    current_card_order = int(update.callback_query.message.caption.split("/")[0])
+
+    current_player = session.query(Players2Game).filter_by(
+        player_id=user.id, 
+        game_id=last_game.Game.id
+        ).first()
+
+    cards_on_hands = session.query(Hands).filter_by(
+        players2game_id=current_player.id, 
+        turn_id=None
+        ).order_by(Hands.id.desc()).limit(5)    
+    
+    current_card = cards_on_hands[current_card_order - 1]
+    current_card_image = session.query(Cards).filter_by(id=current_card.card_id).first().path
+
+    # Обновляем БД
+    last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
+    current_card.turn_id = last_turn.id
+    session.flush()
+
+    players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id)).all()
+
+    print(players.id)
+    print(type(players.id))
+
+    cards_on_table = session.query(Hands)\
+        .filter(Hands.players2game_id.in_(players.id))\
+        .filter(Hands.turn_id != None)\
+        .all() #Сложный фильтр, не факт что работает
+    
+
+
+    if len(cards_on_table) < len(players):
+        pass
+    elif len(cards_on_table) == len(players):
+        for player in players:
+            first_card = session.query(Hands).filter_by(
+                players2game_id=player.id, 
+                turn_id=None
+                ).order_by(Hands.id.desc()).first()
+            first_card_image = session.query(Cards).filter_by(id=first_card.card_id).first().path
+            # Кнопочки
+            keyboard = [[InlineKeyboardButton("<", callback_data='previous_card_table'),
+                        InlineKeyboardButton(">", callback_data='next_card_table')]]
+            if player.player_id == current_player.id:
+                keyboard.append([InlineKeyboardButton("Выбрать", callback_data='choose_table')])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            bot.send_photo(
+                chat_id=player.player_id, 
+                photo=first_card_image, 
+                reply_markup=reply_markup, 
+                caption=f"1/{len(cards_on_table)}"
+                )
+
+
+        pass
+    else:
+        pass
+
+
+    
+    
 
 
 
@@ -409,7 +625,10 @@ def leave_game(update,context):
         game_to_end.state = GameStates.ended
         leaver_name = str(session.query(Player).filter_by(id=user.id).first().name)
         for player in players:
-            bot.send_message(chat_id=player.player_id, text=Texts.game_ended_notification.format(player_id=leaver_name))
+            bot.send_message(
+                chat_id=player.player_id, 
+                text=Texts.game_ended_notification.format(player_id=leaver_name)
+                )
         logging.info(f"User {user.id} leave game")
         session.commit()
         return PREPARE
@@ -426,9 +645,10 @@ def unknown_message(update,context):
     """
     Удаляет непонятные сообщения
     """
-    bot.delete_message(chat_id=update.message.from_user.id,
-               message_id=update.message.message_id)
-    bot.sendMessage(chat_id=update.message.chat_id, text=Texts.commandslist)
+    print("================================" + str(update.effective_message.message_id))
+    # bot.delete_message(chat_id=update.message.from_user.id,
+    #            message_id=update.message.message_id)
+    # bot.sendMessage(chat_id=update.message.chat_id, text=Texts.commandslist)
 
 
 
@@ -470,7 +690,7 @@ def main():
             PREPARE:[
                     CommandHandler('create', create_game),
                     CommandHandler('join', join_game),
-                    # MessageHandler(Filters.text, unknown_message),
+                    MessageHandler(Filters.text, unknown_message),
                     # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ],
 
@@ -482,23 +702,29 @@ def main():
             START:  [
                     CommandHandler('begin', begin_game),
                     CommandHandler('leave',leave_game),
+                    MessageHandler(Filters.text, start_turn)
                     # MessageHandler(Filters.text, unknown_message),
                     # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ],
 
-            AWAIT:  [
-                    CommandHandler('create', create_game),
-                    CommandHandler('join', join_game),
+            SECRET: [
                     CommandHandler('leave',leave_game),
-                    # MessageHandler(Filters.text, unknown_message),
+                    ],
+
+            AWAIT:  [
+                    # CommandHandler('create', create_game),
+                    # CommandHandler('join', join_game),
+                    # CommandHandler('begin', begin_game),
+                    CommandHandler('leave',leave_game),
+                    # MessageHandler(Filters.text, card),
                     # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ],
 
             PLAY:   [
-                    CommandHandler('start', start),
                     CommandHandler('leave',leave_game),
+                    CommandHandler('turn',secret_card),
+                    MessageHandler(Filters.regex(r'/.*'), start_turn)
                     # MessageHandler(Filters.text, unknown_message),
-                    # MessageHandler(Filters.regex(r'/.*'), unknown_command)
                     ]
 
         },
@@ -508,12 +734,17 @@ def main():
         name='persistention'
     )
     dispatcher.add_handler(conv_handler)
+    dispatcher.add_handler(CallbackQueryHandler(next_card, pattern="next_card"))
+    dispatcher.add_handler(CallbackQueryHandler(previous_card, pattern="previous_card"))
+    dispatcher.add_handler(CallbackQueryHandler(choose_card,pattern="choose"))
+    dispatcher.add_handler(CallbackQueryHandler(suggest_card,pattern="suggest"))
 
     ## Запускаем мясорубку
     updater.start_polling()
     updater.idle()
     ## Вырубаем мясорубку
     # updater.stop()  # TODO автоматизировать выключалку
+
 
 if __name__ == '__main__':
     main()
