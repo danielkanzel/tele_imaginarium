@@ -208,7 +208,11 @@ def joining(update,context):
 
     # Добавляем игрока в игру
     if last_game == None or last_game.Game.state == GameStates.ended:
-        session.add(Players2Game(game_id=message.text,player_id=user.id,position=position))     # Привязываем игрока к игре
+        session.add(Players2Game(
+            game_id=message.text,
+            player_id=user.id,
+            position=position)
+            )     # Привязываем игрока к игре
         session.flush()                                                                         # Отправляем
         update.message.reply_text(Texts.succesfully_connected)                                  # Текст успеха
     else:
@@ -221,7 +225,10 @@ def joining(update,context):
     players = session.query(Players2Game).filter_by(game_id=message.text).all()
     session.commit()
     for player in players:
-        bot.send_message(chat_id=player.player_id, text=f"Игрок {user.name} присоединился!")
+        bot.send_message(
+            chat_id=player.player_id, 
+            text=f"Игрок {user.name} присоединился!"
+            )
     logging.info(f"User {user.id} join game")
     return AWAIT
 
@@ -256,14 +263,18 @@ def begin_game(update,context):
         cards_list = []
         for card in cards:
             cards_list.append(card.id)
+        random.shuffle(cards_list)
         hand_size = len(cards_list) // len(players)
+
         for player in players:
             for i in range(hand_size):
-                session.add(Hands(
-                    players2game_id=player.id,
-                    card_id=str(random.sample(cards_list,1)[0])
-                ))
-        
+                session.add(
+                    Hands(
+                        players2game_id=player.id,
+                        card_id=cards_list.pop()
+                        )
+                    )
+
         # Загружаем вышеописанное в базу
         session.commit()
 
@@ -352,6 +363,7 @@ def next_card(update,context):
     session = Session()                             # init DB session
     last_game = get_last_game(session,user)         # get last game
 
+    # Получаем порядок карты среди последних 5
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
 
     current_player = session.query(Players2Game).filter_by(
@@ -364,6 +376,7 @@ def next_card(update,context):
         turn_id=None
         ).order_by(Hands.id.desc()).limit(5)
 
+    # Следующая карта
     if current_card_order == 5:
         next_card = cards_on_hands[0]
         next_card_order = 1
@@ -379,7 +392,7 @@ def next_card(update,context):
                 InlineKeyboardButton(">", callback_data='next_card')]]
     if last_turn.players2game_id == user.id:
         keyboard.append([InlineKeyboardButton("Загадать эту карту", callback_data='choose')])
-    else:
+    elif last_turn.phrase != None:
         keyboard.append([InlineKeyboardButton("Предложить эту карту к фразе", callback_data='suggest')])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -431,6 +444,9 @@ def previous_card(update,context):
                 InlineKeyboardButton(">", callback_data='next_card')]]
     if last_turn.players2game_id == user.id:
         keyboard.append([InlineKeyboardButton("Выбрать", callback_data='choose')])
+    elif last_turn.phrase != None:
+        keyboard.append([InlineKeyboardButton("Предложить эту карту к фразе", callback_data='suggest')])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     update.callback_query.message.edit_media(
@@ -453,7 +469,7 @@ def choose_card(update,context):
     session = Session()                             # init DB session
     last_game = get_last_game(session,user)         # get last game
 
-    # Получаем данные для отрисовки ответа
+    # Записываем карту в БД
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
 
     current_player = session.query(Players2Game).filter_by(
@@ -464,18 +480,18 @@ def choose_card(update,context):
     cards_on_hands = session.query(Hands).filter_by(
         players2game_id=current_player.id, 
         turn_id=None
-        ).order_by(Hands.id.desc()).limit(5)    
-    
-    current_card = cards_on_hands[current_card_order - 1]
-    
-    current_card_image = session.query(Cards).filter_by(id=current_card.card_id).first().path
+        ).order_by(Hands.id.desc()).limit(5)
 
-    # Обновляем БД
+    current_card = cards_on_hands[current_card_order - 1]
     last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
     current_card.turn_id = last_turn.id
     session.flush()
+    
+
 
     # Отправляем сообщение
+    current_card_image = update.callback_query.message.photo[0].file_id
+
     update.callback_query.message.edit_media(
         media=InputMediaPhoto(
             media=current_card_image,
@@ -551,26 +567,27 @@ def suggest_card(update,context):
     current_card = cards_on_hands[current_card_order - 1]
     current_card_image = session.query(Cards).filter_by(id=current_card.card_id).first().path
 
-    # Обновляем БД
+    # Присваем карту к ходу
     last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).first()
     current_card.turn_id = last_turn.id
     session.flush()
 
+    # Получаем полный список карт на столе
     players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id)).all()
 
-    print(players.id)
-    print(type(players.id))
+    player_ids = []
+    for player in players:
+        player_ids.append(str(player.id))
 
     cards_on_table = session.query(Hands)\
-        .filter(Hands.players2game_id.in_(players.id))\
+        .filter(Hands.players2game_id.in_(player_ids))\
         .filter(Hands.turn_id != None)\
         .all() #Сложный фильтр, не факт что работает
-    
 
 
-    if len(cards_on_table) < len(players):
-        pass
-    elif len(cards_on_table) == len(players):
+    if len(cards_on_table) < len(players): # Если не все выложили карты
+        return # Надо убирать голосовалку
+    elif len(cards_on_table) == len(players): # Если все выложили карты
         for player in players:
             first_card = session.query(Hands).filter_by(
                 players2game_id=player.id, 
