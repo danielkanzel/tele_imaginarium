@@ -507,6 +507,8 @@ def choose_card(update,context):
     last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).order_by(Turn.id.desc()).first()
     current_card.turn_id = last_turn.id
     session.flush()
+    
+
 
     # Отправляем сообщение
     current_card_image = update.callback_query.message.photo[0].file_id
