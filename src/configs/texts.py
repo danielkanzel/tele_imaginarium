@@ -27,7 +27,8 @@ class Texts():
 
     leave_success = "Вы вышли из игры"
 
-    game_ended_notification = "Игрок {player_id} завершил игру"
+    game_ended_notification = """Игрок {player_id} завершил игру
+Нажмите /leave, чтобы выйти из завершенной игры"""
 
     unable_to_connect = "Невозможно подключиться к этой игре"
 
