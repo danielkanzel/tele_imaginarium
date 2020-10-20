@@ -3,3 +3,4 @@ sqlalchemy
 mongoengine
 pymongo
 psycopg2
+dnspython
