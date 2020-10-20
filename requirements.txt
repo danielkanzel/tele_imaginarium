@@ -2,3 +2,4 @@ python-telegram-bot
 sqlalchemy
 mongoengine
 bson
+pymongo
