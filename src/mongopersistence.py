@@ -59,7 +59,7 @@ class DBHelper():
     def close(self):
         mongoengine.disconnect()
 
-class a(BasePersistence):
+class DBPersistence(BasePersistence):
     """Uses DBHelper to make the bot persistant on a database.
        It's heavily inspired on PicklePersistence from python-telegram-bot
     """
