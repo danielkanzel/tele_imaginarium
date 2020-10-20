@@ -1,6 +1,6 @@
 import telegram
 from telegram import InputMediaPhoto
-from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, PicklePersistence, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, CallbackQueryHandler
 import logging
 import os
 import random
@@ -14,9 +14,13 @@ from models import *
 from db_enums.game_states import GameStates
 from configs.texts import Texts
 
+from mongopersistence import MongoPersistence
+
 
 ## Constants
-TOKEN = '789364882:AAF6-OLy36xTCZB0Y3KQtK0pfZTUuRe56dM' # TODO Убрать в конфиг
+TOKEN = os.environ.get('TOKEN')
+PORT = int(os.environ.get('PORT', '8443'))
+APPNAME = os.environ.get('APPNAME')
 PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
 ## SqlAlchemy objects
@@ -28,8 +32,9 @@ Session = sessionmaker(bind=engine)
 ## Telegram objects
 bot = telegram.Bot(token=TOKEN)
 updater = Updater(
-    token=TOKEN, 
-    persistence=PicklePersistence(filename='persistence_file'), 
+    token=TOKEN,
+    persistence=MongoPersistence(),
+    # persistence=PicklePersistence(filename='persistence_file'), 
     use_context=True
     )
 dispatcher = updater.dispatcher
@@ -56,6 +61,14 @@ def get_last_game(session,user):
         .first() # Получаем статус последней игры пользователя
     return last_game
 
+def get_current_game(session,user):
+    last_game = session.query(Game,Players2Game)\
+        .join(Players2Game, Players2Game.game_id == Game.id)\
+        .filter_by(player_id=user.id)\
+        .filter(Game.state==GameStates.in_progress)\
+        .order_by(Game.id.desc())\
+        .first() # Получаем статус последней игры пользователя
+    return last_game
 
 
 
@@ -308,12 +321,13 @@ def secret_card(update,context):
     Присылаем всем их набор карточек
     Переводим в стейт, где дадим ему шанс прислать номер карточки
     """
-    user = update.message.from_user                 # get user data
+    user = (update.message.from_user or update.callback_query.message.chat)      # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)         # get last game
 
     players = session.query(Players2Game).filter_by(game_id=str(last_game.Game.id))
     last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).order_by(Turn.id.desc()).first()
+
 
 
     # Определяем чей ход
@@ -379,7 +393,7 @@ def next_card(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     # Получаем порядок карты среди последних 5
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
@@ -435,7 +449,7 @@ def previous_card(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
 
@@ -488,7 +502,7 @@ def choose_card(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     # Записываем карту в БД
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
@@ -533,7 +547,7 @@ def start_turn(update,context):
     """
     user = update.message.from_user                 # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     # Получаем секретное слово и сохраняем
     last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).order_by(Turn.id.desc()).first()
@@ -590,7 +604,7 @@ def suggest_card(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     last_turn = session.query(Turn).filter_by(game_id=last_game.Game.id).order_by(Turn.id.desc()).first()
 
@@ -609,7 +623,7 @@ def suggest_card(update,context):
         players2game_id=current_player.id, 
         turn_id=None
         ).order_by(Hands.id.desc()).limit(5)    
-    
+
     current_card = cards_on_hands[current_card_order - 1]
     current_card_image = session.query(Cards).filter_by(id=current_card.card_id).first().path
 
@@ -679,7 +693,7 @@ def next_card_table(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     # Получаем порядок карты среди последних 5
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
@@ -735,7 +749,7 @@ def previous_card_table(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
 
@@ -788,7 +802,7 @@ def vote_card(update,context):
     """
     user = update.callback_query.message.chat       # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     # Записываем карту в БД
     current_card_order = int(update.callback_query.message.caption.split("/")[0])
@@ -832,11 +846,11 @@ def vote_card(update,context):
         for i in card.voters.split(", "):
             all_votes[i] = card.card_id
 
+    turn_player = session.query(Players2Game).filter_by(id=last_turn.players2game_id).first()
 
     # Подсчет очков, если все голоса собраны
     if len(players)-1 == len(all_votes):
 
-        turn_player = session.query(Players2Game).filter_by(id=last_turn.players2game_id).first()
 
         turn_player_name = session.query(Player).filter_by(id=turn_player.player_id).first().name
 
@@ -936,7 +950,7 @@ def vote_card(update,context):
 def turn(update,context):
     user = update.message.from_user                 # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
     
     current_game = session.query(Game).filter_by(id=last_game.Game.id).first()
 
@@ -980,7 +994,7 @@ def turn(update,context):
 def status(update,context):
     user = update.message.from_user                 # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_current_game(session,user)      # get current game
 
     players = session.query(Players2Game)\
         .filter_by(game_id=last_game.Game.id)\
@@ -1009,7 +1023,7 @@ def leave_game(update,context):
     """
     user = update.message.from_user                 # get user data
     session = Session()                             # init DB session
-    last_game = get_last_game(session,user)         # get last game
+    last_game = get_last_game(session,user)      # get current game
 
 
 
@@ -1132,8 +1146,14 @@ def main():
     dispatcher.add_handler(CallbackQueryHandler(vote_card,pattern="vote"))
 
     ## Запускаем мясорубку
-    updater.start_polling()
+    updater = Updater(TOKEN)
+    updater.start_webhook(listen="0.0.0.0",
+                      port=PORT,
+                      url_path=TOKEN)
+    updater.bot.set_webhook(f"https://{APPNAME}.herokuapp.com/{TOKEN}")
     updater.idle()
+    # updater.start_polling()
+    # updater.idle()
     ## Вырубаем мясорубку
     # updater.stop()  # TODO автоматизировать выключалку
 

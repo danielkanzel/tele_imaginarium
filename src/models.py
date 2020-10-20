@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, String, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -42,7 +42,7 @@ class Turn(Base):
 class Hands(Base):
     __tablename__ = "hands"
     id = Column(Integer, primary_key=True)
-    players2game_id = Column(Integer, ForeignKey('players2game.id')) 
+    players2game_id = Column(Integer, ForeignKey('players2game.id'))
     card_id = Column(Integer, ForeignKey('cards.id'))       # Линк к карте, позволяет контролировать ренж карт
     turn_id = Column(Integer, ForeignKey('turn.id'))        # Линк к ходу, заполняется, когда карта кладется на стол
     voters = Column(String)

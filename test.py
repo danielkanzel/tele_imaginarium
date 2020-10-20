@@ -43,9 +43,62 @@ def test_resend_message(update,context):
         )
 
 
+def begin(update,context):
+    return next_1(update,context)
+
+def next_1(update,context):
+    keyboard = [[InlineKeyboardButton("Button", callback_data='next2')],
+                [InlineKeyboardButton("Button", callback_data='next1')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    print(update)
+
+    bot.send_message(
+        chat_id=(update.message or update.callback_query.message).chat.id, 
+        text="hi 1",
+        reply_markup=reply_markup
+            )
+    return JOINING
+
+def next_2(update,context):
+    keyboard = [[InlineKeyboardButton("Button", callback_data='next1')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    print(update)
+
+    bot.send_message(
+        chat_id=update.callback_query.message.chat.id, 
+        text="hi 2",
+        reply_markup=reply_markup
+            )
+    return PREPARE
+
+JOINING, PREPARE = range(2)
 
 def main():
     ## Вставляем фичу в обработчик
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(next_2, pattern="next2")],
+
+        states={
+
+            PREPARE:[
+                    CallbackQueryHandler(next_1, pattern="next1"),
+                    ],
+
+            JOINING:[
+                    CallbackQueryHandler(next_2, pattern="next2"),
+                    ]
+
+        },
+
+        fallbacks=[CommandHandler('cancel', begin)], 
+        per_message=True,
+        # persistent=True, 
+        # name='persistention'
+    )
+
+    dispatcher.add_handler(conv_handler)
     dispatcher.add_handler(MessageHandler(Filters.text, test_resend_message))
     dispatcher.add_handler(MessageHandler(Filters.photo, test_image_resend))
 
