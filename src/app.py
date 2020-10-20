@@ -24,7 +24,7 @@ APPNAME = os.environ.get('APPNAME')
 PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
 ## SqlAlchemy objects
-engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'\database.db')
+engine = create_engine(os.environ.get('POSTGRES_URI'))
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
@@ -1082,10 +1082,6 @@ def unknown_command(update,context):
 #==================================================================================================#
 #==================================================================================================#
 #==================================================================================================#
-
-
-
-
 
 
 
