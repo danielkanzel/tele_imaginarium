@@ -1,6 +1,5 @@
 from telegram.ext import BasePersistence
 from collections import defaultdict
-from config import mongo_URI
 from copy import deepcopy
 from telegram.utils.helpers import decode_user_chat_data_from_json, decode_conversations_from_json, encode_conversations_to_json
 import mongoengine
@@ -59,7 +58,7 @@ class DBHelper():
     def close(self):
         mongoengine.disconnect()
 
-class DBPersistence(BasePersistence):
+class a(BasePersistence):
     """Uses DBHelper to make the bot persistant on a database.
        It's heavily inspired on PicklePersistence from python-telegram-bot
     """

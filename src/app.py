@@ -14,7 +14,7 @@ from models import *
 from db_enums.game_states import GameStates
 from configs.texts import Texts
 
-from mongopersistence import MongoPersistence
+from mongopersistence import DBPersistence
 
 
 ## Constants
@@ -33,7 +33,7 @@ Session = sessionmaker(bind=engine)
 bot = telegram.Bot(token=TOKEN)
 updater = Updater(
     token=TOKEN,
-    persistence=MongoPersistence(),
+    persistence=DBPersistence(),
     # persistence=PicklePersistence(filename='persistence_file'), 
     use_context=True
     )
