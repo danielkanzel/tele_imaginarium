@@ -2,3 +2,4 @@ python-telegram-bot
 sqlalchemy
 mongoengine
 pymongo
+psycopg2
