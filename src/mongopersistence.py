@@ -5,6 +5,7 @@ from telegram.utils.helpers import decode_user_chat_data_from_json, decode_conve
 import mongoengine
 import json
 from bson import json_util
+import os
 
 class Conversations(mongoengine.Document):
     obj = mongoengine.DictField()
