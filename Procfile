@@ -1,1 +1,1 @@
-bot: python src/app.py
+app: python src/app.py
