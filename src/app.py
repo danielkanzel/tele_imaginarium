@@ -1092,6 +1092,7 @@ def main():
     updater.bot.set_webhook(f"https://{APPNAME}.herokuapp.com/{TOKEN}")
 
     print("================================================== ВЕБХУКИ ВСТАЛИ")
+    print(updater.bot.getWebhookInfo().to_dict())
 
     dispatcher = updater.dispatcher
 
