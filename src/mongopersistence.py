@@ -26,8 +26,8 @@ class BotData(mongoengine.Document):
 class DBHelper():
     """Class to add and get documents from a mongo database using mongoengine
     """
-    def __init__(self, dbname=os.environ.get('MONGO_DBNAME')):
-        mongoengine.connect(dbname, 
+    def __init__(self, dbname=""):
+        mongoengine.connect(os.environ.get('MONGO_DBNAME'), 
                             username=os.environ.get('MONGO_USER'), 
                             password=os.environ.get('MONGO_PASSWORD'), 
                             host=os.environ.get('MONGO_URI'))

@@ -28,19 +28,6 @@ engine = create_engine(os.environ.get('POSTGRES_URI'))
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
-
-## Telegram objects
-bot = telegram.Bot(token=TOKEN)
-updater = Updater(
-    token=TOKEN,
-    persistence=DBPersistence(),
-    # persistence=PicklePersistence(filename='persistence_file'), 
-    use_context=True
-    )
-dispatcher = updater.dispatcher
-dispatcher.add_error_handler(error_callback)
-
-
 ## Настройка логирования
 logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
@@ -1089,7 +1076,26 @@ def unknown_command(update,context):
 
 
 def main():
-    ## Вставляем фичу в обработчик
+    ## Telegram objects
+    bot = telegram.Bot(token=TOKEN)
+
+    updater = Updater(
+        token=TOKEN,
+        persistence=DBPersistence(),
+        # persistence=PicklePersistence(filename='persistence_file'), 
+        use_context=True
+        )
+        
+    updater.start_webhook(listen="0.0.0.0",
+                      port=PORT,
+                      url_path=TOKEN)
+    updater.bot.set_webhook(f"https://{APPNAME}.herokuapp.com/{TOKEN}")
+
+
+    dispatcher = updater.dispatcher
+
+    dispatcher.add_error_handler(error_callback)
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
 
@@ -1142,11 +1148,7 @@ def main():
     dispatcher.add_handler(CallbackQueryHandler(vote_card,pattern="vote"))
 
     ## Запускаем мясорубку
-    updater = Updater(TOKEN)
-    updater.start_webhook(listen="0.0.0.0",
-                      port=PORT,
-                      url_path=TOKEN)
-    updater.bot.set_webhook(f"https://{APPNAME}.herokuapp.com/{TOKEN}")
+    
     updater.idle()
     # updater.start_polling()
     # updater.idle()
