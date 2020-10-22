@@ -1091,6 +1091,7 @@ def main():
                       url_path=TOKEN)
     updater.bot.set_webhook(f"https://{APPNAME}.herokuapp.com/{TOKEN}")
 
+    print("================================================== ВЕБХУКИ ВСТАЛИ")
 
     dispatcher = updater.dispatcher
 
@@ -1146,6 +1147,9 @@ def main():
     dispatcher.add_handler(CallbackQueryHandler(choose_card,pattern="choose"))
     dispatcher.add_handler(CallbackQueryHandler(suggest_card,pattern="suggest"))
     dispatcher.add_handler(CallbackQueryHandler(vote_card,pattern="vote"))
+
+    print("================================================== ХАНДЛЕРЫ ПРОПИСАЛИСЬ")
+
 
     ## Запускаем мясорубку
     
