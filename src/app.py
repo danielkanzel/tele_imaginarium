@@ -31,7 +31,7 @@ Session = sessionmaker(bind=engine)
 ## Настройка логирования
 logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-        level=logging.INFO
+        level=logging.DEBUG
         )
 logging.getLogger(__name__)
 # logging.getLogger("telegram").setLevel(logging.INFO)
@@ -1085,7 +1085,7 @@ def main():
         # persistence=PicklePersistence(filename='persistence_file'), 
         use_context=True
         )
-        
+
     updater.start_webhook(listen="0.0.0.0",
                       port=PORT,
                       url_path=TOKEN)
@@ -1150,6 +1150,7 @@ def main():
     ## Запускаем мясорубку
     
     updater.idle()
+    print("================================================== ОНО ДОЛЖНО НА ЭТОМ ЭТАПЕ РАБОТАТЬ")
     # updater.start_polling()
     # updater.idle()
     ## Вырубаем мясорубку
