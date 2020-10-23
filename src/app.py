@@ -1088,7 +1088,7 @@ def main():
     updater.start_webhook(listen="0.0.0.0",
                       port=PORT,
                       url_path=TOKEN)
-    updater.bot.set_webhook(f"https://danersow.example.com/{TOKEN}")
+    updater.bot.set_webhook(f"https://193.9.62.189/{TOKEN}")
 
     print("================================================== ВЕБХУКИ ВСТАЛИ")
     print(updater.bot.getWebhookInfo().to_dict())
