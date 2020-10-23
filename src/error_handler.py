@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from telegram.error import (TelegramError, Unauthorized, BadRequest, 
                             TimedOut, ChatMigrated, NetworkError)
 

@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 
 class Texts():
     commandslist = """/create - создать новую игру,

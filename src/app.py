@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import telegram
 from telegram import InputMediaPhoto
 from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, CallbackQueryHandler,PicklePersistence
