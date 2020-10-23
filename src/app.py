@@ -14,17 +14,16 @@ from models import *
 from db_enums.game_states import GameStates
 from configs.texts import Texts
 
-from mongopersistence import DBPersistence
+# from mongopersistence import DBPersistence
 
 
 ## Constants
 TOKEN = os.environ.get('TOKEN')
 PORT = int(os.environ.get('PORT', '8443'))
-APPNAME = os.environ.get('APPNAME')
 PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
 ## SqlAlchemy objects
-engine = create_engine(os.environ.get('POSTGRES_URI'))
+engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'\database.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
@@ -1081,15 +1080,15 @@ def main():
 
     updater = Updater(
         token=TOKEN,
-        persistence=DBPersistence(),
-        # persistence=PicklePersistence(filename='persistence_file'), 
+        # persistence=DBPersistence(),
+        persistence=PicklePersistence(filename='persistence_file'), 
         use_context=True
         )
 
     updater.start_webhook(listen="0.0.0.0",
                       port=PORT,
                       url_path=TOKEN)
-    updater.bot.set_webhook(f"https://{APPNAME}.herokuapp.com/{TOKEN}")
+    updater.bot.set_webhook(f"https://danersow.example.com/{TOKEN}")
 
     print("================================================== ВЕБХУКИ ВСТАЛИ")
     print(updater.bot.getWebhookInfo().to_dict())
