@@ -1,6 +1,6 @@
 import telegram
 from telegram import InputMediaPhoto
-from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, ConversationHandler, MessageHandler, RegexHandler, Filters, CallbackQueryHandler,PicklePersistence
 import logging
 import os
 import random
