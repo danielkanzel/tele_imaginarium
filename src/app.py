@@ -1090,8 +1090,8 @@ def main():
     updater.start_webhook(listen='0.0.0.0',
                       port=8443,
                       url_path='TOKEN',
-                      key='/etc/ssl/private/private.key',
-                      cert='/etc/ssl/cert.pem',
+                      key='/etc/ssl/new/private.key',
+                      cert='/etc/ssl/new/cert.pem',
                       webhook_url=f"https://danielkanzel.xyz:8443/{TOKEN}")
 
     print("================================================== ВЕБХУКИ ВСТАЛИ")
