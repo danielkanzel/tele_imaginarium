@@ -1087,7 +1087,7 @@ def main():
         use_context=True
         )
 
-    updater.start_webhook(listen='0.0.0.0',
+    updater.start_webhook(listen='193.9.62.189',
                       port=8443,
                       url_path='TOKEN',
                       key='/etc/ssl/private/private.key',
