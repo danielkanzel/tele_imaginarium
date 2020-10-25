@@ -1092,7 +1092,7 @@ def main():
                       url_path=TOKEN,
                       key='/etc/ssl/private/private.key',
                       cert='/etc/ssl/certificate.crt',
-                      webhook_url=f"https://danielkanzel.xyz:8443/{TOKEN}"
+                      webhook_url=f"https://danielkanzel.xyz:443/{TOKEN}"
                     )
 
     # updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
