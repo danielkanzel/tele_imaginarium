@@ -1089,13 +1089,13 @@ def main():
 
     updater.start_webhook(listen='0.0.0.0',
                       port=8443,
-                      url_path='TOKEN'
-                    #   key='/etc/ssl/new2/private.key',
-                    #   cert='/etc/ssl/new2/cert.pem',
-                    #   webhook_url=f"https://danielkanzel.xyz:8443/{TOKEN}"
+                      url_path=TOKEN,
+                      key='/etc/ssl/private/private.key',
+                      cert='/etc/ssl/certificate.crt',
+                      webhook_url=f"https://danielkanzel.xyz:8443/{TOKEN}"
                     )
 
-    updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
+    # updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
 
     print("================================================== ВЕБХУКИ ВСТАЛИ")
     print(updater.bot.getWebhookInfo().to_dict())
