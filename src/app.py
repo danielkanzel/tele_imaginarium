@@ -21,7 +21,6 @@ from configs.texts import Texts
 
 ## Constants
 TOKEN = os.environ.get('TOKEN')
-PORT = int(os.environ.get('PORT', '8443'))
 PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
 ## SqlAlchemy objects
@@ -32,11 +31,11 @@ Session = sessionmaker(bind=engine)
 ## Настройка логирования
 logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-        level=logging.DEBUG
+        level=logging.INFO
         )
 logging.getLogger(__name__)
 # logging.getLogger("telegram").setLevel(logging.INFO)
-logging.getLogger('sqlalchemy').setLevel(logging.DEBUG)
+logging.getLogger('sqlalchemy').setLevel(logging.INFO)
 # logging.getLogger("urllib3").setLevel(logging.NOTSET)
 
 
@@ -1099,9 +1098,6 @@ def main():
 
     # updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
 
-    print("================================================== ВЕБХУКИ ВСТАЛИ")
-    print(updater.bot.getWebhookInfo().to_dict())
-
     dispatcher = updater.dispatcher
 
     dispatcher.add_error_handler(error_callback)
@@ -1157,13 +1153,10 @@ def main():
     dispatcher.add_handler(CallbackQueryHandler(suggest_card,pattern="suggest"))
     dispatcher.add_handler(CallbackQueryHandler(vote_card,pattern="vote"))
 
-    print("================================================== ХАНДЛЕРЫ ПРОПИСАЛИСЬ")
-
 
     ## Запускаем мясорубку
     
     updater.idle()
-    print("================================================== ОНО ДОЛЖНО НА ЭТОМ ЭТАПЕ РАБОТАТЬ")
     # updater.start_polling()
     # updater.idle()
     ## Вырубаем мясорубку
