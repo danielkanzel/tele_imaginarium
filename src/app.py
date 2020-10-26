@@ -1090,10 +1090,10 @@ def main():
     updater.start_webhook(listen='0.0.0.0',
                       port=443,
                       url_path=TOKEN,
-                    #   key='/etc/ssl/new2/private.key',
-                    #   cert='/etc/ssl/new2/cert.pem',
-                      key='/etc/ssl/private/private.key',
-                      cert='/etc/ssl/certificate.crt',
+                      key='/etc/ssl/new/private.key',
+                      cert='/etc/ssl/new/cert.pem',
+                    #   key='/etc/ssl/private/private.key',
+                    #   cert='/etc/ssl/certificate.crt',
                       webhook_url=f"https://danielkanzel.xyz:443/{TOKEN}"
                     )
 
