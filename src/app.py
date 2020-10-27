@@ -19,6 +19,27 @@ from configs.texts import Texts
 # from mongopersistence import DBPersistence
 
 
+bot = telegram.Bot(token=TOKEN)
+
+updater = Updater(
+    token=TOKEN,
+    # persistence=DBPersistence(),
+    persistence=PicklePersistence(filename='persistence_file'), 
+    use_context=True
+    )
+
+updater.start_webhook(listen='0.0.0.0',
+                    port=443,
+                    url_path=TOKEN,
+                    key='/etc/ssl/new/private.key',
+                    cert='/etc/ssl/new/cert.pem',
+                #   key='/etc/ssl/private/private.key',
+                #   cert='/etc/ssl/certificate.crt',
+                    webhook_url=f"https://danielkanzel.xyz:443/{TOKEN}"
+                )
+
+# updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
+
 ## Constants
 TOKEN = os.environ.get('TOKEN')
 PREPARE, JOINING, START, AWAIT, PLAY = range(5)
@@ -1076,27 +1097,7 @@ def unknown_command(update,context):
 
 
 def main():
-    ## Telegram objects
-    bot = telegram.Bot(token=TOKEN)
 
-    updater = Updater(
-        token=TOKEN,
-        # persistence=DBPersistence(),
-        persistence=PicklePersistence(filename='persistence_file'), 
-        use_context=True
-        )
-
-    updater.start_webhook(listen='0.0.0.0',
-                      port=443,
-                      url_path=TOKEN,
-                      key='/etc/ssl/new/private.key',
-                      cert='/etc/ssl/new/cert.pem',
-                    #   key='/etc/ssl/private/private.key',
-                    #   cert='/etc/ssl/certificate.crt',
-                      webhook_url=f"https://danielkanzel.xyz:443/{TOKEN}"
-                    )
-
-    # updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
 
     dispatcher = updater.dispatcher
 
