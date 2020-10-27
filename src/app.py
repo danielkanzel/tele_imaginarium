@@ -24,7 +24,7 @@ TOKEN = os.environ.get('TOKEN')
 PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
 ## SqlAlchemy objects
-engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'\database.db')
+engine = create_engine('sqlite://./'+os.path.abspath(os.getcwd())+'\database.db')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
