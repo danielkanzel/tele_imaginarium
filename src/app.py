@@ -945,7 +945,7 @@ def vote_card(update,context):
 Нажмите /status, чтобы посмотреть счет.
 Нажмите /leave, чтобы выйти из завершенной игры."""
                 )
-    else:
+    elif len(players)-1 == len(all_votes):
         bot.send_message(
                 chat_id=current_player.player_id, 
                 text=f"Нажми /turn для начала своего хода"
