@@ -18,7 +18,12 @@ from configs.texts import Texts
 
 # from mongopersistence import DBPersistence
 
+## Constants
+TOKEN = os.environ.get('TOKEN')
+PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
+
+## Telegram objects
 bot = telegram.Bot(token=TOKEN)
 
 updater = Updater(
@@ -40,9 +45,6 @@ updater.start_webhook(listen='0.0.0.0',
 
 # updater.bot.set_webhook(url=f"https://danielkanzel.xyz:8443/{TOKEN}")
 
-## Constants
-TOKEN = os.environ.get('TOKEN')
-PREPARE, JOINING, START, AWAIT, PLAY = range(5)
 
 ## SqlAlchemy objects
 engine = create_engine('sqlite:///'+os.path.abspath(os.getcwd())+'/database.db')
